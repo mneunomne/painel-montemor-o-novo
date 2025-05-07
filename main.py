@@ -57,124 +57,6 @@ def read_data_from_csv(csv_file):
                 print(f"Skipping malformed row: {row}. Error: {e}")
     return entries
 
-def add_margin_with_features(image, tile_id, margin_size=32, marker_size=16):
-    """Add margin with ArUco markers and grayscale reference"""
-    width, height = image.size
-    new_width = width + margin_size * 2
-    new_height = height + margin_size * 2
-    
-    # Create new image with margin
-    new_image = Image.new('L', (new_width, new_height), color=128)
-    new_image.paste(image, (margin_size, margin_size))
-    
-    # Create drawing context
-    draw = ImageDraw.Draw(new_image)
-    
-    # Calculate positions for markers to ensure they fit within margins
-    marker_padding = (margin_size - marker_size) // 2
-    
-    # Ensure marker fits in margin
-    if marker_size > margin_size:
-        marker_size = margin_size
-        marker_padding = 0
-        print(f"Warning: Marker size adjusted to {marker_size} to fit within margins")
-    
-    # Calculate marker positions
-    tl_pos = (marker_padding, marker_padding)
-    tr_pos = (new_width - marker_padding - marker_size, marker_padding)
-    bl_pos = (marker_padding, new_height - marker_padding - marker_size)
-    br_pos = (new_width - marker_padding - marker_size, new_height - marker_padding - marker_size)
-    
-    # Generate ArUco markers for each corner (using different IDs based on tile_id)
-    marker_id_base = int(tile_id) if tile_id.isdigit() else abs(hash(tile_id) % 10000)
-    
-    # Add white margin around ArUco markers
-    white_margin = 2  # 2-pixel white margin
-    
-    # Top-left marker with white border
-    print(f"Creating marker with ID: {marker_id_base}")
-    marker_tl = create_aruco_marker(marker_id_base, marker_size - 2*white_margin)
-    # Create white-bordered marker
-    marker_with_border = np.ones((marker_size, marker_size), dtype=np.uint8) * 255
-    # Place marker in center of white border
-    h, w = marker_tl.shape
-    marker_with_border[white_margin:white_margin+h, white_margin:white_margin+w] = marker_tl
-    new_image.paste(Image.fromarray(marker_with_border, 'L'), tl_pos)
-    
-    # Top-right marker with white border
-    marker_tr = create_aruco_marker(marker_id_base + 1, marker_size - 2*white_margin)
-    marker_with_border = np.ones((marker_size, marker_size), dtype=np.uint8) * 255
-    h, w = marker_tr.shape
-    marker_with_border[white_margin:white_margin+h, white_margin:white_margin+w] = marker_tr
-    new_image.paste(Image.fromarray(marker_with_border, 'L'), tr_pos)
-    
-    # Bottom-left marker with white border
-    marker_bl = create_aruco_marker(marker_id_base + 2, marker_size - 2*white_margin)
-    marker_with_border = np.ones((marker_size, marker_size), dtype=np.uint8) * 255
-    h, w = marker_bl.shape
-    marker_with_border[white_margin:white_margin+h, white_margin:white_margin+w] = marker_bl
-    new_image.paste(Image.fromarray(marker_with_border, 'L'), bl_pos)
-    
-    # Bottom-right marker with white border
-    marker_br = create_aruco_marker(marker_id_base + 3, marker_size - 2*white_margin)
-    marker_with_border = np.ones((marker_size, marker_size), dtype=np.uint8) * 255
-    h, w = marker_br.shape
-    marker_with_border[white_margin:white_margin+h, white_margin:white_margin+w] = marker_br
-    new_image.paste(Image.fromarray(marker_with_border, 'L'), br_pos)
-    
-    # Calculate gradient bar positions - make them same size as markers
-    grad_bar_width = marker_size
-    
-    # Left and right margins - vertical gradient bars
-    left_grad_x = (margin_size - marker_size) // 2
-    right_grad_x = new_width - margin_size + (margin_size - marker_size) // 2
-    
-    # Position vertical gradient bars in the middle of left/right margins
-    left_grad_y_start = margin_size
-    left_grad_y_end = new_height - margin_size
-    
-    # Draw vertical gradient bars in 16 steps to correspond to 4-bit values (0-15)
-    step_count = 16
-    step_height = (left_grad_y_end - left_grad_y_start) // step_count
-    
-    for step in range(step_count):
-        y_start = left_grad_y_start + step * step_height
-        y_end = left_grad_y_start + (step + 1) * step_height if step < step_count - 1 else left_grad_y_end
-        
-        # Calculate value for this step (0-255 in 16 steps)
-        val = int(255 * step / (step_count - 1))
-        
-        # Fill the entire step height with the same value
-        for y in range(y_start, y_end):
-            draw.rectangle([(left_grad_x, y), (left_grad_x + grad_bar_width - 1, y)], fill=val)  # Left reference
-            draw.rectangle([(right_grad_x, y), (right_grad_x + grad_bar_width - 1, y)], fill=255-val)  # Right reference
-    
-    # Top and bottom margins - horizontal gradient bars
-    top_grad_y = (margin_size - marker_size) // 2
-    bottom_grad_y = new_height - margin_size + (margin_size - marker_size) // 2
-    
-    # Position horizontal gradient bars in the middle of top/bottom margins
-    top_grad_x_start = margin_size
-    top_grad_x_end = new_width - margin_size
-    
-    # Draw horizontal gradient bars in 16 steps
-    step_count = 16
-    step_width = (top_grad_x_end - top_grad_x_start) // step_count
-    
-    for step in range(step_count):
-        x_start = top_grad_x_start + step * step_width
-        x_end = top_grad_x_start + (step + 1) * step_width if step < step_count - 1 else top_grad_x_end
-        
-        # Calculate value for this step (0-255 in 16 steps)
-        val = int(255 * step / (step_count - 1))
-        
-        # Fill the entire step width with the same value
-        for x in range(x_start, x_end):
-            draw.rectangle([(x, top_grad_y), (x, top_grad_y + grad_bar_width - 1)], fill=val)  # Top reference
-            draw.rectangle([(x, bottom_grad_y), (x, bottom_grad_y + grad_bar_width - 1)], fill=255-val)  # Bottom reference
-    
-    return new_image
-
 def create_aruco_marker(marker_id, marker_size=16, border_bits=1):
     """Create an ArUco marker using OpenCV"""
     aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
@@ -188,15 +70,22 @@ def create_aruco_marker(marker_id, marker_size=16, border_bits=1):
     
     return marker_img
 
-def create_square_tile(data_entry, size=100, margin_size=32, marker_size=16):
-    """Create a square image for a single data entry using 4-bit encoding
+def float_to_bytes(f):
+    return struct.pack('!d', f)
+
+def create_square_tile(data_entry, size=400):
+    """Create a square image for a single data entry using 4-bit encoding with central marker
     
     Parameters:
     - data_entry: Dictionary containing entry data
-    - size: Size of the data square in pixels
-    - margin_size: Size of the margin in pixels
-    - marker_size: Size of the ArUco markers in pixels
+    - size: Size of the final square image in pixels
     """
+    # Get marker ID from the data entry
+    marker_id = int(data_entry['id']) if data_entry['id'].isdigit() else abs(hash(data_entry['id']) % 10000)
+    
+    # Calculate the spacing pattern based on marker_id (0-15)
+    gradient_spacing = marker_id % 16
+    
     # Encode the data (lat, lng, timestamp)
     encoded_data = float_to_bytes(data_entry['lat']) + \
                   float_to_bytes(data_entry['lng']) + \
@@ -215,41 +104,120 @@ def create_square_tile(data_entry, size=100, margin_size=32, marker_size=16):
     
     int4_array = np.array(int4_values, dtype=np.uint8)
     
-    # Calculate the largest square that fits our data
+    # Calculate the square that fits our data (ensure it's even)
     data_length = len(int4_array)
-    original_side = int(math.ceil(math.sqrt(data_length)))
-    padded_length = original_side * original_side
+    side = int(math.ceil(math.sqrt(data_length)))
+    if side % 2 == 1:  # Ensure even number of rows/cols
+        side += 1
+    
+    padded_length = side * side
     
     # Pad with zeros if needed to make a square
     if len(int4_array) < padded_length:
         int4_array = np.pad(int4_array, (0, padded_length - len(int4_array)), 'constant')
     
-    # Reshape to original square
-    original_square = int4_array[:padded_length].reshape((original_side, original_side))
+    # Reshape to square
+    data_square = np.zeros((side, side), dtype=np.uint8)
     
-    # Scale values from 0-15 to 0-255 by multiplying by 17 (255/15)
-    original_square = original_square * 17
+    # Insert gradient reference points into the data array
+    # We'll place 16 gradient points (0-15) in a pattern determined by the gradient_spacing
     
-    # Scale up to desired size using nearest neighbor interpolation
-    img = Image.fromarray(original_square, mode='L')
-    img = img.resize((size, size), Image.NEAREST)
+    # Base positions for gradient markers (in a cross pattern from the center)
+    # These are offsets from the center
+    gradient_positions = []
     
-    # Add margin with features
-    img_with_margin = add_margin_with_features(img, data_entry['id'], margin_size, marker_size)
+    # Calculate center indices
+    center_x = side // 2
+    center_y = side // 2
     
-    return img_with_margin
-
-def float_to_bytes(f):
-    return struct.pack('!d', f)
+    # Generate gradient positions in a pattern based on marker_id
+    # We'll use a spiral pattern starting from the center
+    for i in range(16):  # 16 gradient points (0-15)
+        # Calculate distance from center based on gradient spacing
+        distance = (i * gradient_spacing) % (side // 2 - 1)
+        if distance == 0:
+            distance = 1  # Ensure we don't place at center (reserved for marker)
+            
+        # Calculate spiral position
+        angle = 2 * math.pi * i / 16
+        offset_x = int(distance * math.cos(angle))
+        offset_y = int(distance * math.sin(angle))
+        
+        # Calculate absolute position (ensure it's within bounds and doesn't overlap with center)
+        pos_x = center_x + offset_x
+        pos_y = center_y + offset_y
+        
+        # Constrain to valid indices
+        pos_x = max(0, min(side - 1, pos_x))
+        pos_y = max(0, min(side - 1, pos_y))
+        
+        gradient_positions.append((pos_x, pos_y, i))
+    
+    # Fill the data square with our encoded data
+    data_index = 0
+    
+    # Create mask for central 2x2 marker area
+    marker_mask = np.zeros((side, side), dtype=bool)
+    marker_mask[center_y-1:center_y+1, center_x-1:center_x+1] = True
+    
+    # Create mask for gradient points
+    gradient_mask = np.zeros((side, side), dtype=bool)
+    for x, y, _ in gradient_positions:
+        gradient_mask[y, x] = True
+    
+    # First, place gradient reference points
+    for x, y, value in gradient_positions:
+        data_square[y, x] = value * 17  # Scale 0-15 to 0-255
+    
+    # Then, fill in the rest with data (skipping marker and gradient positions)
+    for y in range(side):
+        for x in range(side):
+            if not marker_mask[y, x] and not gradient_mask[y, x]:
+                if data_index < len(int4_array):
+                    data_square[y, x] = int4_array[data_index] * 17  # Scale 0-15 to 0-255
+                    data_index += 1
+    
+    # Scale to the desired image size
+    data_point_size = size // side
+    img = Image.new('L', (size, size), color=128)
+    
+    # Draw data points
+    draw = ImageDraw.Draw(img)
+    for y in range(side):
+        for x in range(side):
+            px = x * data_point_size
+            py = y * data_point_size
+            
+            # Skip the center area where the marker will be placed
+            if marker_mask[y, x]:
+                continue
+                
+            # Draw the data point
+            draw.rectangle(
+                [(px, py), (px + data_point_size - 1, py + data_point_size - 1)], 
+                fill=int(data_square[y, x])
+            )
+    
+    # Create and place the central marker
+    central_marker_size = data_point_size * 2  # 2x2 data points
+    marker = create_aruco_marker(marker_id, marker_size=central_marker_size)
+    marker_img = Image.fromarray(marker, 'L')
+    
+    # Calculate center position to place the marker
+    marker_x = (center_x - 1) * data_point_size  # -1 because marker is 2x2 and centered
+    marker_y = (center_y - 1) * data_point_size
+    
+    # Place the marker
+    img.paste(marker_img, (marker_x, marker_y))
+    
+    return img
 
 def main():
     # Use navegacoes.csv as default without prompting
     csv_file = "navegacoes.csv"
     
     # Fixed parameters - can be changed in the code directly
-    margin_size = 64
-    marker_size = 64
-    tile_size = 200
+    tile_size = 400  # Size of the output image
     
     try:
         # Read and parse the data from CSV
@@ -264,10 +232,8 @@ def main():
         
         # Process each entry
         for entry in entries:
-            # Create the square tile with custom parameters
-            img = create_square_tile(entry, size=tile_size, 
-                                   margin_size=margin_size, 
-                                   marker_size=marker_size)
+            # Create the square tile with new requirements
+            img = create_square_tile(entry, size=tile_size)
             
             # Save the image
             output_file = f"tiles/{entry['filename']}.png"
