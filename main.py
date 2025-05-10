@@ -123,8 +123,16 @@ def create_square_tile(data_entry, size=400):
     center_y = side // 2
     
     # Create mask for central 2x2 marker area
-    #marker_mask = np.zeros((side, side), dtype=bool)
-    #marker_mask[center_y:center_y, center_x:center_x] = True
+    marker_mask = np.zeros((side, side), dtype=bool)
+    marker_mask[center_y:center_y, center_x:center_x] = True
+
+    # create mask for ALL values in the diagonal central lines
+    for i in range(1, side // 2 + 1):
+        print(f"i: {i}, center_x: {center_x}, center_y: {center_y}, side: {side//2}")
+        marker_mask[center_y + i, center_x + i] = True
+        marker_mask[center_y - i, center_x + i] = True
+        marker_mask[center_y + i, center_x - i] = True
+        marker_mask[center_y - i, center_x - i] = True
     
     # Scale values for better visibility (0-15 to 0-255)
     data_square = data_square * 17
