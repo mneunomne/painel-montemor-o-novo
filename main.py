@@ -73,23 +73,25 @@ def create_aruco_marker(marker_id, marker_size=16, border_bits=1):
 def float_to_bytes(f):
     return struct.pack('!d', f)
 
+
 def create_square_tile(data_entry, size=400):
-    """Create a square image for a single data entry using 4-bit encoding with central marker
+    """Create a square image for a single data entry with a central marker
     
     Parameters:
-    - data_entry: Dictionary containing entry data
+    - data_entry: Dictionary containing entry data (id, lat, lng, timestamp)
     - size: Size of the final square image in pixels
     """
+    import numpy as np
+    import math
+    from PIL import Image, ImageDraw
+    
     # Get marker ID from the data entry
     marker_id = int(data_entry['id']) if data_entry['id'].isdigit() else abs(hash(data_entry['id']) % 10000)
     
-    # Calculate the spacing pattern based on marker_id (0-15)
-    gradient_spacing = marker_id % 16
-    
     # Encode the data (lat, lng, timestamp)
     encoded_data = float_to_bytes(data_entry['lat']) + \
-                  float_to_bytes(data_entry['lng']) + \
-                  float_to_bytes(data_entry['timestamp'])
+                   float_to_bytes(data_entry['lng']) + \
+                   float_to_bytes(data_entry['timestamp'])
     
     # Convert to numpy array of bytes (uint8)
     byte_values = np.frombuffer(encoded_data, dtype=np.uint8)
@@ -97,120 +99,93 @@ def create_square_tile(data_entry, size=400):
     # Split each byte into two 4-bit values (0-15)
     int4_values = []
     for byte in byte_values:
-        # First 4 bits (shift right by 4)
-        int4_values.append(byte >> 4)
-        # Last 4 bits (mask with 0x0F)
-        int4_values.append(byte & 0x0F)
+        int4_values.append(byte >> 4)         # First 4 bits
+        int4_values.append(byte & 0x0F)       # Last 4 bits
     
     int4_array = np.array(int4_values, dtype=np.uint8)
     
-    # Calculate the square that fits our data (ensure it's even)
+    # Calculate the square side length that fits our data (ensure it's even)
     data_length = len(int4_array)
     side = int(math.ceil(math.sqrt(data_length)))
-    if side % 2 == 1:  # Ensure even number of rows/cols
+    if side % 2 == 0:  # Ensure even number of rows/cols
         side += 1
     
+    # Pad array to make a perfect square
     padded_length = side * side
-    
-    # Pad with zeros if needed to make a square
     if len(int4_array) < padded_length:
         int4_array = np.pad(int4_array, (0, padded_length - len(int4_array)), 'constant')
     
     # Reshape to square
-    data_square = np.zeros((side, side), dtype=np.uint8)
+    data_square = int4_array.reshape(side, side)
     
-    # Insert gradient reference points into the data array
-    # We'll place 16 gradient points (0-15) in a pattern determined by the gradient_spacing
-    
-    # Base positions for gradient markers (in a cross pattern from the center)
-    # These are offsets from the center
-    gradient_positions = []
-    
-    # Calculate center indices
+    # Calculate center for marker placement
     center_x = side // 2
     center_y = side // 2
     
-    # Generate gradient positions in a pattern based on marker_id
-    # We'll use a spiral pattern starting from the center
-    for i in range(16):  # 16 gradient points (0-15)
-        # Calculate distance from center based on gradient spacing
-        distance = (i * gradient_spacing) % (side // 2 - 1)
-        if distance == 0:
-            distance = 1  # Ensure we don't place at center (reserved for marker)
-            
-        # Calculate spiral position
-        angle = 2 * math.pi * i / 16
-        offset_x = int(distance * math.cos(angle))
-        offset_y = int(distance * math.sin(angle))
-        
-        # Calculate absolute position (ensure it's within bounds and doesn't overlap with center)
-        pos_x = center_x + offset_x
-        pos_y = center_y + offset_y
-        
-        # Constrain to valid indices
-        pos_x = max(0, min(side - 1, pos_x))
-        pos_y = max(0, min(side - 1, pos_y))
-        
-        gradient_positions.append((pos_x, pos_y, i))
-    
-    # Fill the data square with our encoded data
-    data_index = 0
-    
     # Create mask for central 2x2 marker area
-    marker_mask = np.zeros((side, side), dtype=bool)
-    marker_mask[center_y-1:center_y+1, center_x-1:center_x+1] = True
+    #marker_mask = np.zeros((side, side), dtype=bool)
+    #marker_mask[center_y:center_y, center_x:center_x] = True
     
-    # Create mask for gradient points
-    gradient_mask = np.zeros((side, side), dtype=bool)
-    for x, y, _ in gradient_positions:
-        gradient_mask[y, x] = True
-    
-    # First, place gradient reference points
-    for x, y, value in gradient_positions:
-        data_square[y, x] = value * 17  # Scale 0-15 to 0-255
-    
-    # Then, fill in the rest with data (skipping marker and gradient positions)
-    for y in range(side):
-        for x in range(side):
-            if not marker_mask[y, x] and not gradient_mask[y, x]:
-                if data_index < len(int4_array):
-                    data_square[y, x] = int4_array[data_index] * 17  # Scale 0-15 to 0-255
-                    data_index += 1
+    # Scale values for better visibility (0-15 to 0-255)
+    data_square = data_square * 17
     
     # Scale to the desired image size
     data_point_size = size // side
-    img = Image.new('L', (size, size), color=128)
+    img = Image.new('L', (size, size), color=255)
     
-    # Draw data points
+    # Draw data points as squares
     draw = ImageDraw.Draw(img)
     for y in range(side):
         for x in range(side):
-            px = x * data_point_size
-            py = y * data_point_size
-            
             # Skip the center area where the marker will be placed
             if marker_mask[y, x]:
                 continue
                 
-            # Draw the data point
-            draw.rectangle(
-                [(px, py), (px + data_point_size - 1, py + data_point_size - 1)], 
-                fill=int(data_square[y, x])
-            )
+            px = x * data_point_size
+            py = y * data_point_size
+            
+            # Calculate center of the square
+            center_px = px + data_point_size // 2
+            center_py = py + data_point_size // 2
+            
+            # Calculate the size of the rotated square
+            rotated_size = data_point_size * 0.7
+            
+            # Calculate the four corners of the rotated square
+            half_diag = rotated_size / math.sqrt(2)
+            points = [
+                (center_px - half_diag, center_py),
+                (center_px, center_py - half_diag),
+                (center_px + half_diag, center_py),
+                (center_px, center_py + half_diag)
+            ]
+            
+            # Draw the rotated square
+            draw.polygon(points, fill=int(data_square[y, x]))
     
     # Create and place the central marker
-    central_marker_size = data_point_size * 2  # 2x2 data points
+    central_marker_size = int(data_point_size * 1)
     marker = create_aruco_marker(marker_id, marker_size=central_marker_size)
     marker_img = Image.fromarray(marker, 'L')
+
+    # Convert to RGBA
+    rgba_img = Image.new("RGBA", img.size)
+    rgba_img.paste(img, (0, 0))
     
-    # Calculate center position to place the marker
-    marker_x = (center_x - 1) * data_point_size  # -1 because marker is 2x2 and centered
-    marker_y = (center_y - 1) * data_point_size
+    # Convert marker to RGBA with transparency
+    rgba_marker = Image.new("RGBA", marker_img.size)
+    rgba_marker.paste(marker_img, (0, 0))
     
-    # Place the marker
-    img.paste(marker_img, (marker_x, marker_y))
+    # Rotate marker with transparency
+    rotated_marker = rgba_marker.rotate(45, expand=True, resample=Image.BICUBIC)
+    rotated_marker = rotated_marker.resize((central_marker_size, central_marker_size))
     
-    return img
+    # Place the marker in the center
+    marker_pos_x = (size // 2) - (central_marker_size // 2)
+    marker_pos_y = (size // 2) - (central_marker_size // 2)
+    rgba_img.paste(rotated_marker, (marker_pos_x, marker_pos_y), rotated_marker)
+    
+    return rgba_img
 
 def main():
     # Use navegacoes.csv as default without prompting
